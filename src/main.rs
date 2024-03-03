@@ -2,106 +2,33 @@ use clap::Parser;
 use axum::{
     routing::post,
     http::StatusCode,
+    extract::{Json, State},
     Router
 };
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
-use serde::Deserialize;
-use std::{
-	net::SocketAddr,
-	path::Path,
-	error, fs
-};
+use serde_json::{json, Value};
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-const DEFAULT_CONF: &str = "grafana_to_ntfy.toml";
-const DEFAULT_PORT: u16 = 8080;
+mod config;
+use crate::config::Config;
 
-#[derive(Deserialize, Debug)]
-struct ConfigFile {
-	url: Option<String>,
-	port: Option<u16>,
-	key: Option<String>,
-}
-
-impl ConfigFile {
-	pub fn new(path: String) -> Result<Self, Box<dyn error::Error>> {
-		let file = Path::new(&path);
-		let config_file: ConfigFile;
-
-		if file.exists() {
-			config_file = toml::from_str(fs::read_to_string(&file)?.as_str())?;
-		} else {
-			return Err(path.into());
-		}
-
-		Ok(config_file)
-	}
-}
-
-struct Config {
-	url: String,
-	port: u16,
-	key: Option<String>,
-}
-
-impl Config {
-	pub fn new(args: Args) -> Self {
-		let config_path = match args.config_file {
-			Some(c) => c,
-			None => DEFAULT_CONF.to_string(),
-		};
-
-		let config_file = match ConfigFile::new(config_path) {
-			Ok(c) => c,
-			Err(e) => {
-				tracing::warn!(e);
-				ConfigFile {url: None, port: Some(DEFAULT_PORT), key: None}
-			}
-		};
-
-		let mut config: Config = Config {url: "".to_string(), port: DEFAULT_PORT, key: None}; 
-
-		config.port = match args.port {
-			Some(p) => p,
-			None => match config_file.port {
-				Some(p) => p,
-				None => DEFAULT_PORT
-			}
-		};
-		tracing::debug!("config port: {}", config.port);
-
-		config.key = match args.key {
-			Some(k) => Some(k),
-			None => config_file.key
-		};
-		tracing::debug!("config key: {:?}", config.key);
-
-		match args.url {
-			Some(u) => config.url = u,
-			None => match config_file.url {
-				Some(u) => config.url = u,
-				None => {
-					tracing::error!("Missing ntfy URL");
-					std::process::exit(exitcode::USAGE);
-				}
-			}
-		};
-		tracing::debug!("config NTFY url: {}", config.url);
-
-		config
-	}
-}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-struct Args {
+struct Cli {
 	/// Config file
 	#[arg(long,short)]
 	config_file: Option<String>,
 
-	/// Full NTFY url
+	/// NTFY url
 	#[arg(long,short)]
 	url: Option<String>,
+
+	/// NTFY topic
+	#[arg(long,short)]
+	topic: Option<String>,
 
 	/// port to listen on
 	#[arg(long,short)]
@@ -119,20 +46,53 @@ async fn main() {
 		.with(EnvFilter::from_default_env())
 		.init();
 
-	let args = Args::parse();
-	tracing::debug!("{:#?}", args);
-
-	let config = Config::new(args);
+	let config = Config::new(Cli::parse());
+	let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+	let shared_config = Arc::new(config);
 
 	let app = Router::new()
-		.route("/", post(root));
+		.route("/", post(root))
+		.with_state(shared_config);
 
-	let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
 	tracing::info!("listening on {}", addr);
 	let listener = TcpListener::bind(&addr).await.unwrap();
 	axum::serve(listener, app).await.unwrap();
 }
 
-async fn root() -> StatusCode {
-	StatusCode::OK
+async fn root(
+	State(config): State<Arc<Config>>,
+	Json(payload): Json<Value>
+) -> StatusCode {
+	let tag = match payload["status"].as_str() {
+		Some("firing") => "warning",
+		Some("ok") => "white_check_mark",
+		_ => ""
+	};
+
+	let msg = json!({
+		"topic": config.topic,
+		"title": payload["title"],
+		"message": payload["message"],
+		"tags": [ tag ],
+		"click": payload["externalURL"]
+	});
+	tracing::debug!("{:#?}", msg);
+
+	match send_to_ntfy(&config, msg.to_string()).await {
+		Ok(_) => { return StatusCode::OK }
+		Err(_) => { return StatusCode::BAD_REQUEST }
+	}
+}
+
+async fn send_to_ntfy(
+	config: &Config,
+	msg: String
+) -> Result<(), reqwest::Error> {
+	tracing::debug!("Sending to {}: {}", config.url, msg);
+	let client = reqwest::Client::new();
+	let _res = client.post(config.url.to_string())
+		.body(msg)
+		.send()
+		.await?;
+	Ok(())
 }
