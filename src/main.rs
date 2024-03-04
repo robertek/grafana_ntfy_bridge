@@ -1,9 +1,8 @@
 use clap::Parser;
 use axum::{
-    routing::post,
-    http::StatusCode,
     extract::{Json, State},
-    Router
+    http::{header::AUTHORIZATION, HeaderMap, StatusCode},
+    routing::post, Router
 };
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -60,9 +59,27 @@ async fn main() {
 }
 
 async fn root(
+	headers: HeaderMap,
 	State(config): State<Arc<Config>>,
 	Json(payload): Json<Value>
 ) -> StatusCode {
+	// Authorization check if the key is defined
+	// Expected a standard format "Bearer key"
+	match &config.key {
+		Some(key) => {
+			if headers.contains_key(AUTHORIZATION) {
+				let configured = format!("Bearer {}", key);
+				let received = headers.get(AUTHORIZATION).unwrap();
+				if ! configured.eq(received) {
+					return StatusCode::UNAUTHORIZED;
+				}
+			} else {
+				return StatusCode::UNAUTHORIZED;
+			}
+		},
+		None => {}
+	}
+
 	let tag = match payload["status"].as_str() {
 		Some("firing") => "warning",
 		Some("ok") => "white_check_mark",
