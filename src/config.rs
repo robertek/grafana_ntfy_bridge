@@ -6,7 +6,7 @@ use std::{
 
 use crate::Cli;
 
-const DEFAULT_CONF: &str = "grafana_to_ntfy.toml";
+const DEFAULT_CONF: &str = "grafana_ntfy_bridge.toml";
 const DEFAULT_URL: &str = "http://ntfy.sh";
 const DEFAULT_PORT: u16 = 8080;
 
