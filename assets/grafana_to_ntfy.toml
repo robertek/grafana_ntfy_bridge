@@ -1,0 +1,13 @@
+### NTFY server url
+# default: https://ntfy.sh
+#url="https://ntfy.sh"
+
+### NTFY topic
+topic="grafana_to_ntfy-test"
+
+### port to listen on
+# default: 8080
+#port=8080
+
+### key
+#key="0123456789ABCDEF"
