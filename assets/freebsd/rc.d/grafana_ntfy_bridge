@@ -1,0 +1,55 @@
+#!/bin/sh
+
+# PROVIDE: grafana_ntfy_bridge
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+# Add the following lines to /etc/rc.conf to enable grafana_ntfy_bridge
+# grafana_ntfy_bridge_enable="YES"
+#
+# grafana_ntfy_bridge_enable (bool):
+#     Set it to YES to enable grafana_ntfy_bridge
+#     Set to NO by default
+# grafana_ntfy_bridge_user (string):
+#     Set user that grafana_ntfy_bridge will run under
+#     Default is "grafana"
+# grafana_ntfy_bridge_group (string):
+#     Set group that own grafana_ntfy_bridge files
+#     Default is "grafana"
+# grafana_ntfy_bridge_config (string)
+#     Set full path to config file
+#     Default is "/usr/local/etc/grafana_ntfy_bridge.toml"
+
+. /etc/rc.subr
+
+name=grafana_ntfy_bridge
+rcvar=grafana_ntfy_bridge_enable
+
+load_rc_config $name
+
+: ${grafana_ntfy_bridge_enable:="NO"}
+: ${grafana_ntfy_bridge_user:="grafana"}
+: ${grafana_ntfy_bridge_group:="grafana"}
+: ${grafana_ntfy_bridge_config:="/usr/local/etc/grafana_ntfy_bridge.toml"}
+
+pidfile="/var/run/${name}/${name}.pid"
+logfile="/var/log/${name}/${name}.log"
+required_files="${grafana_ntfy_bridge_config}"
+
+procname="/usr/local/bin/grafana_ntfy_bridge"
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} -t ${name} -o ${logfile} ${procname} --config-file=${grafana_ntfy_bridge_config}"
+
+start_precmd="grafana_ntfy_bridge_start_precmd"
+
+grafana_ntfy_bridge_start_precmd()
+{
+	if [ ! -d "/var/run/${name}" ]; then
+		install -d -m 0750 -o ${grafana_ntfy_bridge_user} -g ${grafana_ntfy_bridge_group} "/var/run/${name}"
+	fi
+	if [ ! -d "/var/log/${name}" ]; then
+		install -d -m 0750 -o ${grafana_ntfy_bridge_user} -g ${grafana_ntfy_bridge_group} "/var/log/${name}"
+	fi
+}
+
+run_rc_command "$1"
