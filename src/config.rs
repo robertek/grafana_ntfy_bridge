@@ -33,7 +33,7 @@ impl ConfigFile {
 	}
 }
 
-//#[derive(Copy)]
+#[derive(Default)]
 pub struct Config {
 	pub url: String,
 	pub topic: String,
@@ -61,11 +61,7 @@ impl Config {
 			}
 		};
 
-		let mut config: Config = Config {
-			url: DEFAULT_URL.to_string(),
-			topic: "".to_string(), 
-			port: DEFAULT_PORT, 
-			key: None}; 
+		let mut config: Config = Config::default();
 
 		config.port = match args.port {
 			Some(p) => p,
