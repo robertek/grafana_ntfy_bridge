@@ -5,7 +5,6 @@ use axum::{
     routing::post, Router
 };
 use tokio::net::TcpListener;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -40,10 +39,15 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
-	tracing_subscriber::registry()
-		.with(fmt::layer())
-		.with(EnvFilter::from_default_env())
+	if cfg!(debug_assertions) {
+	tracing_subscriber::fmt()
+		.with_max_level(tracing::Level::DEBUG)
 		.init();
+	} else {
+	tracing_subscriber::fmt()
+		.with_max_level(tracing::Level::INFO)
+		.init();
+	}
 
 	let config = Config::new(Cli::parse());
 	let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
